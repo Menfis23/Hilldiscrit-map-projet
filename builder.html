@@ -36,6 +36,12 @@
 
   #hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 4; background: rgba(21,24,32,.9); color: var(--text);
     border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; font-size: 13px; white-space: nowrap; pointer-events: none; transition: opacity .3s; }
+  /* "Near Centre Ave & Kirkpatrick St" – where the middle of the view is */
+  #where { position: absolute; top: 14px; right: 14px; z-index: 4; background: rgba(21,24,32,.92); color: var(--text); border: 1px solid var(--line);
+    border-radius: 12px; padding: 9px 14px; font-size: 15px; font-weight: 700; max-width: calc(100% - 360px); }
+  #where span { color: var(--gold); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-right: 6px; font-weight: 600; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; z-index: 3; pointer-events: none;
+    border: 2px solid rgba(255,255,255,.85); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
   #loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: var(--bg); color: var(--muted); font-size: 15px; }
   #panelToggle { display: none; }
 
@@ -46,7 +52,8 @@
     #panel .top .sub { display: none; }
     #panel h1 { font-size: 16px; margin: 0; flex: 1; }
     #panelToggle { display: block; padding: 6px 10px; font-size: 13px; }
-    #hint { bottom: auto; top: 12px; white-space: normal; text-align: center; width: max-content; max-width: 90%; }
+    #hint { bottom: auto; top: 58px; white-space: normal; text-align: center; width: max-content; max-width: 90%; font-size: 12px; }
+    #where { top: 10px; left: 10px; right: 10px; max-width: none; text-align: center; font-size: 14px; padding: 8px 12px; }
   }
 </style>
 <!-- Three.js: the free 3D library. The "import map" tells the browser where to find it. -->
@@ -62,6 +69,8 @@
   <div id="scene"></div>
   <div id="loading">Building the neighborhood…</div>
   <div id="hint">Click a highlighted lot to start building</div>
+  <div id="where" aria-live="polite">Hill District</div>
+  <div id="crosshair" aria-hidden="true"></div>
 
   <aside id="panel">
     <div class="top">
@@ -87,6 +96,8 @@
       <div class="controls">
         <label><input type="checkbox" id="showLots" checked> Highlight open lots</label>
         <label><input type="checkbox" id="showExisting" checked> Show existing buildings</label>
+        <label><input type="checkbox" id="showNames" checked> Show street names</label>
+        <label><input type="checkbox" id="showTags" checked> Show labels on new buildings</label>
       </div>
       <div class="row" style="margin-top:6px">
         <button id="topView">Top view</button>
@@ -181,27 +192,111 @@ function ribbon(pts, w, y) {
 }
 // A round patch at each road end so corners look joined.
 function cap(p, w, y) { const g = new THREE.CircleGeometry(w / 2, 10); g.rotateX(-Math.PI / 2); g.translate(p[0], y, p[1]); return g; }
-const roadGeos = [], walkGeos = [];
+// Every road gets three layers: a light sidewalk strip underneath, dark
+// asphalt on top, and (on the bigger streets) a dashed yellow center line.
+const roadGeos = [], walkGeos = [], curbGeos = [], lineGeos = [];
+const MAIN = ["primary", "secondary", "tertiary"];
+function dashes(pts, y) {            // short yellow dashes every 9 m along the middle
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x1, z1] = pts[i], [x2, z2] = pts[i + 1], L = Math.hypot(x2 - x1, z2 - z1);
+    for (let s = 2; s + 4 < L; s += 9) {
+      const a = [x1 + (x2 - x1) * s / L, z1 + (z2 - z1) * s / L], b = [x1 + (x2 - x1) * (s + 4) / L, z1 + (z2 - z1) * (s + 4) / L];
+      out.push(ribbon([a, b], 0.45, y));
+    }
+  }
+  return out;
+}
 OSM.roads.forEach(r => {
   const pts = r.p.map(toXZ), w = ROAD_W[r.k] || 6, walk = ["footway", "steps", "pedestrian"].includes(r.k);
   if (pts.length < 2) return;
-  const y = walk ? 0.15 : 0.25;
-  (walk ? walkGeos : roadGeos).push(ribbon(pts, w, y), cap(pts[0], w, y), cap(pts[pts.length - 1], w, y));
+  if (walk) { walkGeos.push(ribbon(pts, w, 0.15), cap(pts[0], w, 0.15), cap(pts[pts.length - 1], w, 0.15)); return; }
+  const cw = w + (r.k === "service" ? 1.5 : 3.5);
+  curbGeos.push(ribbon(pts, cw, 0.2), cap(pts[0], cw, 0.2), cap(pts[pts.length - 1], cw, 0.2));
+  roadGeos.push(ribbon(pts, w, 0.3), cap(pts[0], w, 0.3), cap(pts[pts.length - 1], w, 0.3));
+  if (MAIN.includes(r.k)) lineGeos.push(...dashes(pts, 0.36));
 });
-const roads = new THREE.Mesh(mergeGeometries(roadGeos.map(g => { if (g.attributes.uv) g.deleteAttribute("uv"); return g.toNonIndexed(); })),
-  new THREE.MeshLambertMaterial({ color: "#7d838e", side: THREE.DoubleSide }));
-roads.receiveShadow = true; scene.add(roads);
-if (walkGeos.length) {
-  const walks = new THREE.Mesh(mergeGeometries(walkGeos.map(g => { if (g.attributes.uv) g.deleteAttribute("uv"); return g.toNonIndexed(); })),
-    new THREE.MeshLambertMaterial({ color: "#e8dcc2", side: THREE.DoubleSide }));
-  walks.receiveShadow = true; scene.add(walks);
+const flat = geos => mergeGeometries(geos.map(g => { if (g.attributes.uv) g.deleteAttribute("uv"); if (g.attributes.normal) g.deleteAttribute("normal"); return g.index ? g.toNonIndexed() : g; }));
+function layer(geos, color) {
+  if (!geos.length) return null;
+  const g = flat(geos); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+  m.receiveShadow = true; scene.add(m); return m;
+}
+layer(curbGeos, "#dcd6c8");
+const roads = layer(roadGeos, "#4d5461");
+layer(lineGeos, "#f2c94c");
+layer(walkGeos, "#e8dcc2");
+
+// =====================================================================
+// 3b) STREET NAMES: printed flat on the road, like a map.
+// Each name is drawn once onto a small picture (a "canvas texture") and
+// reused. A label goes every ~170 m along each named street, turned to
+// follow the road and flipped if needed so it never reads upside down.
+// =====================================================================
+const shortName = n => n.replace(/\bAvenue\b/, "Ave").replace(/\bStreet\b/, "St").replace(/\bBoulevard\b/, "Blvd").replace(/\bDrive\b/, "Dr")
+  .replace(/\bPlace\b/, "Pl").replace(/\bRoad\b/, "Rd").replace(/\bTerrace\b/, "Ter");
+const texCache = {};
+function nameTexture(text) {
+  if (texCache[text]) return texCache[text];
+  const c = document.createElement("canvas"), ctx = c.getContext("2d"), px = 64;
+  ctx.font = `700 ${px}px Inter, Arial, sans-serif`;
+  const w = Math.ceil(ctx.measureText(text).width) + 40;
+  c.width = w; c.height = px + 30;
+  ctx.font = `700 ${px}px Inter, Arial, sans-serif`; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  ctx.lineWidth = 12; ctx.strokeStyle = "rgba(20,24,32,.85)"; ctx.lineJoin = "round";
+  ctx.strokeText(text, w / 2, c.height / 2); ctx.fillStyle = "#ffffff"; ctx.fillText(text, w / 2, c.height / 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return (texCache[text] = { t, aspect: w / c.height });
+}
+const labelGroup = new THREE.Group(); scene.add(labelGroup);
+const namedWays = [];                       // used for "you are near" too
+OSM.roads.forEach(r => {
+  if (!r.n || ["service", "footway", "steps"].includes(r.k)) return;
+  const pts = r.p.map(toXZ), name = shortName(r.n), w = ROAD_W[r.k] || 6;
+  namedWays.push({ name, pts });
+  const segs = []; let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) { const L = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); segs.push({ i, L, at: total }); total += L; }
+  if (total < 45) return;
+  const { t, aspect } = nameTexture(name);
+  const h = Math.max(4.2, w * 0.62), lw = h * aspect;
+  for (let d = Math.min(total / 2, 60); d < total - 20; d += 170) {
+    const s = segs.find(s => d >= s.at && d <= s.at + s.L) || segs[segs.length - 1];
+    if (s.L < lw * 0.6) continue;           // too short to fit the words here
+    const [x1, z1] = pts[s.i], [x2, z2] = pts[s.i + 1], f = (d - s.at) / s.L;
+    let ang = Math.atan2(z2 - z1, x2 - x1);
+    if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(lw, h),
+      new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = -ang;
+    m.position.set(x1 + (x2 - x1) * f, 0.5, z1 + (z2 - z1) * f);
+    m.renderOrder = 2; m.userData.main = MAIN.includes(r.k); labelGroup.add(m);
+  }
+});
+
+// "You are near…": the closest named streets to the middle of the view.
+function distToWay(x, z, pts) {
+  let best = 1e9;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, az] = pts[i], [bx, bz] = pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), z - (az + t * dz)));
+  }
+  return best;
+}
+function nearestStreets(x, z) {
+  const best = {};
+  namedWays.forEach(w => { const d = distToWay(x, z, w.pts); if (!(w.name in best) || d < best[w.name]) best[w.name] = d; });
+  return Object.entries(best).sort((a, b) => a[1] - b[1]);
 }
 
 // =====================================================================
 // 4) EXISTING BUILDINGS: OpenStreetMap outlines pushed up into blocks.
 // Height = floors × 3.2 m (or a typical 2-floor house if unknown).
 // =====================================================================
-const PASTELS = ["#f1ede4", "#e9e2d3", "#efe6dc", "#e2e7ea", "#ece4d6"];
+// Muted city colors (brick, tan, stone, gray-blue) so the new, brightly
+// colored buildings you place stand out. Roofs are a darker shade.
+const WALLS = ["#d9c2a7", "#c98f72", "#e6dccb", "#b9c3cc", "#cdb79b", "#a9b4a0", "#d8cfc2", "#bf9f86"];
 const bGeos = [];
 OSM.buildings.forEach((b, i) => {
   const pts = b.p.map(toXZ);
@@ -210,9 +305,10 @@ OSM.buildings.forEach((b, i) => {
   const h = b.l ? b.l * 3.2 : 6.5 + (i % 3) * 1.2;
   const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
   g.rotateX(-Math.PI / 2);
-  const c = new THREE.Color(PASTELS[i % PASTELS.length]);
+  const c = new THREE.Color(WALLS[(i * 7) % WALLS.length]), roof = c.clone().multiplyScalar(0.72);
+  const nrm = g.attributes.normal;
   const n = g.attributes.position.count, col = new Float32Array(n * 3);
-  for (let k = 0; k < n; k++) col.set([c.r, c.g, c.b], k * 3);
+  for (let k = 0; k < n; k++) { const cc = nrm.getY(k) > 0.5 ? roof : c; col.set([cc.r, cc.g, cc.b], k * 3); }
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   if (g.attributes.uv) g.deleteAttribute("uv");
   bGeos.push(g.index ? g.toNonIndexed() : g);
@@ -249,8 +345,14 @@ LOTS.forEach(l => {
   lots.push({ ...l, id, ring: l.g[0][0].map(toXZ) });
 });
 const lotMesh = new THREE.Mesh(mergeGeometries(lotGeos),
-  new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.78, depthWrite: false }));
+  new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.68, depthWrite: false }));
 lotMesh.receiveShadow = true; scene.add(lotMesh);
+// Thin white outline around every lot so neighbors don't blur together.
+const edge = [];
+lots.forEach(l => { const r = l.ring; for (let i = 0; i < r.length - 1; i++) edge.push(r[i][0], 0.42, r[i][1], r[i + 1][0], 0.42, r[i + 1][1]); });
+const lotLines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(edge, 3)),
+  new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.55 }));
+scene.add(lotLines);
 const lotIdAttr = lotMesh.geometry.attributes.lotId, lotColAttr = lotMesh.geometry.attributes.color;
 // Which vertex range belongs to each lot (so we can recolor one lot quickly).
 const ranges = {};
@@ -331,6 +433,22 @@ function fit(lot) {
 // Saved in this browser so it's still there next time.
 // =====================================================================
 let city = store.get("hd.city.v1", {});
+const tags = new THREE.Group(); scene.add(tags);
+let lastK = 0;   // current zoom factor for labels (set by scaleLabels)
+const tagCache = {};
+function tagTexture(t) {               // a rounded pill with the building's color and name
+  if (tagCache[t.name]) return tagCache[t.name];
+  const c = document.createElement("canvas"), ctx = c.getContext("2d"), px = 44;
+  ctx.font = `700 ${px}px Inter, Arial, sans-serif`;
+  const w = Math.ceil(ctx.measureText(t.name).width) + 110, h = px + 36;
+  c.width = w; c.height = h;
+  ctx.fillStyle = "rgba(21,24,32,.92)"; ctx.beginPath(); ctx.roundRect(2, 2, w - 4, h - 4, h / 2); ctx.fill();
+  ctx.fillStyle = t.color; ctx.beginPath(); ctx.arc(h / 2 + 6, h / 2, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.font = `700 ${px}px Inter, Arial, sans-serif`; ctx.fillStyle = "#fff"; ctx.textBaseline = "middle";
+  ctx.fillText(t.name, h / 2 + 32, h / 2 + 2);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return (tagCache[t.name] = tex);
+}
 const placed = {};           // lot id -> 3D group
 const byPin = Object.fromEntries(lots.map(l => [l.pin, l]));
 function place(lot, type, turns = 0) {
@@ -342,12 +460,20 @@ function place(lot, type, turns = 0) {
   g.rotation.y = -f.ang + turns * Math.PI / 2;
   g.userData = { lotId: lot.id, type, turns };
   scene.add(g); placed[lot.id] = g;
+  // A floating name tag above the new building (always faces the camera).
+  const top = new THREE.Box3().setFromObject(g).max.y;
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTexture(TYPES[type]), depthTest: false, transparent: true }));
+  const ar = tag.material.map.image.width / tag.material.map.image.height;
+  const ts = 5.5 * THREE.MathUtils.clamp(f.scale * 1.2, 0.55, 1);
+  tag.userData.base = [ts * ar, ts]; const k0 = lastK || 1;
+  tag.scale.set(ts * ar * k0, ts * k0, 1); tag.position.set(f.cx, top + 6, f.cz); tag.renderOrder = 5;
+  tag.userData.isTag = true; tags.add(tag); g.userData.tag = tag;
   city[lot.pin] = { t: type, r: turns }; store.set("hd.city.v1", city);
   paintLot(lot.id); updateCount();
 }
 function unplace(lot) {
   const g = placed[lot.id]; if (!g) return;
-  scene.remove(g); g.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+  scene.remove(g); if (g.userData.tag) { tags.remove(g.userData.tag); g.userData.tag.material.dispose(); } g.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
   delete placed[lot.id]; delete city[lot.pin]; store.set("hd.city.v1", city);
   paintLot(lot.id); updateCount();
 }
@@ -405,7 +531,9 @@ function select(l) {
     const t = placed[l.id]?.userData.type, b = t ? TYPES[t] : null;
     const tight = b && l.sqft && l.sqft < NEEDS[t]
       ? `<br><span style="color:var(--gold)">Small for this: a ${b.name.toLowerCase()} usually needs about ${NEEDS[t].toLocaleString()} sq ft. Combine nearby lots or pick a bigger one.</span>` : "";
-    info.innerHTML = `<b>${l.addr || "Lot with no street number"}</b><br>${l.sqft ? l.sqft.toLocaleString() + " sq ft" : "Size not listed"} · ${OWNER[l.own]}<br>
+    const cx = l.ring.reduce((s, p) => s + p[0], 0) / l.ring.length, cz = l.ring.reduce((s, p) => s + p[1], 0) / l.ring.length;
+    const near = nearestStreets(cx, cz).slice(0, 2).filter(([, d], i) => i === 0 || d < 45).map(([n]) => n).join(" & ");
+    info.innerHTML = `<b>${l.addr || "Lot with no street number"}</b><br>Near ${near}<br>${l.sqft ? l.sqft.toLocaleString() + " sq ft" : "Size not listed"} · ${OWNER[l.own]}<br>
       ${b ? `Built: <b>${b.name}</b><br>Rough cost: ${b.cost}${tight}` : "Empty. Pick something to build below."}`;
   }
   document.querySelectorAll(".menu button").forEach(btn => { btn.disabled = !l; btn.classList.toggle("cur", !!(l && placed[l.id]?.userData.type === btn.dataset.t)); });
@@ -432,7 +560,9 @@ document.getElementById("clearAll").onclick = () => {
   if (!Object.keys(placed).length || !confirm("Remove every building you placed?")) return;
   Object.keys(placed).forEach(id => unplace(lots[id])); select(null);
 };
-document.getElementById("showLots").onchange = e => { lotMesh.visible = e.target.checked; };
+document.getElementById("showLots").onchange = e => { lotMesh.visible = lotLines.visible = e.target.checked; };
+document.getElementById("showNames").onchange = e => { labelGroup.visible = e.target.checked; };
+document.getElementById("showTags").onchange = e => { tags.visible = e.target.checked; };
 document.getElementById("showExisting").onchange = e => { existing.visible = e.target.checked; };
 document.getElementById("resetView").onclick = () => { camera.position.copy(START.pos); controls.target.copy(START.target); };
 document.getElementById("topView").onclick = () => { const t = controls.target; camera.position.set(t.x, 700, t.z + 1); };
@@ -459,9 +589,29 @@ addEventListener("keydown", e => {
 // =====================================================================
 function resize() { const w = host.clientWidth, h = host.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(host); resize();
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+// "Near…" label: when the view moves, find the closest streets to its center.
+const where = document.getElementById("where");
+let lastT = "", lastCheck = 0;
+function updateWhere(now) {
+  if (now - lastCheck < 250) return; lastCheck = now;
+  const t = controls.target, key = Math.round(t.x / 8) + "," + Math.round(t.z / 8);
+  if (key === lastT) return; lastT = key;
+  const n = nearestStreets(t.x, t.z);
+  if (!n.length || n[0][1] > 250) { where.textContent = "Hill District"; return; }
+  where.innerHTML = `<span>Near</span> ${n[0][0]}${n[1] && n[1][1] < 60 ? " &amp; " + n[1][0] : ""}`;
+}
+// Street names grow when you zoom out so they stay readable; when far away
+// only the main streets keep their names, so the view doesn't get crowded.
+function scaleLabels() {
+  const k = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) / 260, 1, 3.2);
+  if (Math.abs(k - lastK) < 0.03) return; lastK = k;
+  labelGroup.children.forEach(m => { m.scale.set(k, k, 1); m.visible = k < 1.7 || m.userData.main; });
+  const kt = Math.min(k, 2.2);
+  tags.children.forEach(t => t.scale.set(t.userData.base[0] * kt, t.userData.base[1] * kt, 1));
+}
+renderer.setAnimationLoop(now => { controls.update(); updateWhere(now); scaleLabels(); renderer.render(scene, camera); });
 document.getElementById("loading").remove();
-window.__builder = { lots, placed, TYPES, place, select, camera, controls };   // for testing
+window.__builder = { lots, placed, TYPES, place, select, camera, controls, nearestStreets, namedWays: () => namedWays.length, labels: () => labelGroup.children.length };   // for testing
 </script>
 </body>
 </html>
