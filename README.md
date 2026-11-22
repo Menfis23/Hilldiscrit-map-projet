@@ -10,6 +10,7 @@ A church-led, step-by-step vision for Pittsburgh's Hill District, around Kirkpat
 |---|---|
 | `index.html` | Home: the vision in one sentence and links to every section |
 | `map.html` | The Lot Map: the proposed sites, plus every vacant or publicly owned lot from county records. Click a lot to see its size and owner type, and mark it Possible, Chosen, or Not available |
+| `builder.html` | The City Builder: a 3D low-poly model of the real streets around Kirkpatrick St. Click an open lot, pick one of 10 buildings, then rotate or delete it. Your city saves in the browser |
 | `cycle.html` | The shelter and recycling cycle, as a circle you can click through |
 | `roadmap.html` | Stage 0 to Stage 5, with tasks and checkpoints to tick off |
 | `costs.html` | Rough cost ranges for every project |
@@ -19,6 +20,7 @@ A church-led, step-by-step vision for Pittsburgh's Hill District, around Kirkpat
 
 - `data/plan.js`: the roadmap stages, costs, cycle steps, and building list. Change a number or a sentence here and every page updates.
 - `data/lots.js`: the open lots, built once from Allegheny County parcel shapes and WPRDC property assessments. Owners are shown by type only (City, URA, Housing Authority, private person, private company), never by name.
+- `data/streets.js`: streets and building outlines from OpenStreetMap, used by the City Builder.
 - `nav.js`: the top menu and footer for every page.
 - `style.css`: colors and layout shared by every page.
 

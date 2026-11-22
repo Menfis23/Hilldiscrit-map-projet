@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Builder · Hill District Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { height: 100vh; overflow: hidden; }
+  .app { position: relative; height: calc(100vh - 58px); }
+  #scene { position: absolute; inset: 0; touch-action: none; }
+  #scene canvas { display: block; }
+
+  /* ---------- Side panel ---------- */
+  #panel { position: absolute; top: 14px; left: 14px; bottom: 14px; width: 300px; z-index: 5; display: flex; flex-direction: column;
+    background: rgba(21,24,32,.94); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; backdrop-filter: blur(6px); }
+  #panel .top { padding: 16px 16px 10px; border-bottom: 1px solid var(--line); }
+  #panel h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -.3px; }
+  #panel .sub { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.45; }
+  #panel .scroll { overflow-y: auto; padding: 12px 16px 16px; flex: 1; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--dim); font-weight: 600; margin: 14px 0 8px; }
+  .label:first-child { margin-top: 0; }
+  #selInfo { font-size: 13px; color: var(--muted); background: #12151c; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; line-height: 1.5; }
+  #selInfo b { color: var(--text); }
+  .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .menu button { display: flex; align-items: center; gap: 8px; text-align: left; font-size: 13px; padding: 8px 9px; line-height: 1.2; }
+  .menu button i { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .menu button:disabled { opacity: .45; cursor: not-allowed; }
+  .menu button.cur { border-color: var(--gold); background: #2a2614; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row button { font-size: 13px; padding: 8px 11px; }
+  .controls label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #c5ccd8; margin-bottom: 6px; cursor: pointer; }
+  .tip { font-size: 12px; color: var(--dim); line-height: 1.5; margin-top: 12px; }
+  #placedCount { font-size: 13px; color: var(--muted); }
+
+  #hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 4; background: rgba(21,24,32,.9); color: var(--text);
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; font-size: 13px; white-space: nowrap; pointer-events: none; transition: opacity .3s; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: var(--bg); color: var(--muted); font-size: 15px; }
+  #panelToggle { display: none; }
+
+  @media (max-width: 760px) {
+    #panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 46%; border-radius: 14px 14px 0 0; border-bottom: none; }
+    #panel.min .scroll { display: none; }
+    #panel .top { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+    #panel .top .sub { display: none; }
+    #panel h1 { font-size: 16px; margin: 0; flex: 1; }
+    #panelToggle { display: block; padding: 6px 10px; font-size: 13px; }
+    #hint { bottom: auto; top: 12px; white-space: normal; text-align: center; width: max-content; max-width: 90%; }
+  }
+</style>
+<!-- Three.js: the free 3D library. The "import map" tells the browser where to find it. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body data-nofooter="1">
+<div class="app">
+  <div id="scene"></div>
+  <div id="loading">Building the neighborhood…</div>
+  <div id="hint">Click a highlighted lot to start building</div>
+
+  <aside id="panel">
+    <div class="top">
+      <h1>City Builder</h1>
+      <p class="sub">The real streets around Kirkpatrick St. Pick an open lot, choose what to build, and see it appear. These are vision pictures, not architect plans.</p>
+      <button id="panelToggle" aria-expanded="true">Hide</button>
+    </div>
+    <div class="scroll">
+      <div class="label">Selected lot</div>
+      <div id="selInfo">Nothing selected yet. Click a colored lot on the map.</div>
+
+      <div class="label">Build here</div>
+      <div class="menu" id="menu"></div>
+
+      <div class="label">Selected building</div>
+      <div class="row">
+        <button id="rotL" disabled>Rotate left</button>
+        <button id="rotR" disabled>Rotate right</button>
+        <button id="del" disabled>Delete</button>
+      </div>
+
+      <div class="label">View</div>
+      <div class="controls">
+        <label><input type="checkbox" id="showLots" checked> Highlight open lots</label>
+        <label><input type="checkbox" id="showExisting" checked> Show existing buildings</label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="topView">Top view</button>
+        <button id="resetView">Reset view</button>
+        <button id="clearAll">Clear all</button>
+      </div>
+      <p id="placedCount" style="margin-top:12px"></p>
+      <p class="tip"><b style="color:var(--muted)">Moving around:</b> drag to spin, scroll or pinch to zoom, right-drag or two-finger drag to slide. Blue lots are public land (city, URA, Housing Authority); yellow lots are private vacant land. Your city saves in this browser.</p>
+      <p class="tip">Streets and buildings © OpenStreetMap contributors. Lots: Allegheny County parcels and WPRDC assessments.</p>
+    </div>
+  </aside>
+</div>
+
+<script src="nav.js"></script>
+<script src="data/plan.js"></script>
+<script src="data/lots.js"></script>
+<script src="data/streets.js"></script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+
+// =====================================================================
+// 1) MAP COORDINATES -> 3D METERS
+// Latitude/longitude are angles on the Earth. For a small area we can
+// treat them as a flat grid: 1° of latitude ≈ 110,540 m, and 1° of
+// longitude ≈ 111,320 m × cos(latitude). The center of the area is (0, 0).
+// In Three.js, x = east, z = south, y = up.
+// =====================================================================
+const [S, W, N, E] = OSM.bbox;
+const LAT0 = (S + N) / 2, LNG0 = (W + E) / 2;
+const MX = 111320 * Math.cos(LAT0 * Math.PI / 180), MZ = 110540;
+const toXZ = ([lng, lat]) => [(lng - LNG0) * MX, -(lat - LAT0) * MZ];
+const inArea = ([lng, lat]) => lat > S && lat < N && lng > W && lng < E;
+
+// =====================================================================
+// 2) THE SCENE: renderer, camera, lights, ground
+// =====================================================================
+const host = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#bfe4ff");
+scene.fog = new THREE.Fog("#bfe4ff", 900, 2200);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
+const START = { pos: new THREE.Vector3(-120, 420, 520), target: new THREE.Vector3(40, 0, 40) };
+camera.position.copy(START.pos);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(START.target);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.46;      // can't go under the ground
+controls.minDistance = 40; controls.maxDistance = 1400;
+controls.screenSpacePanning = false;
+
+scene.add(new THREE.HemisphereLight("#ffffff", "#9cc48a", 1.6));
+const sun = new THREE.DirectionalLight("#fff4dd", 2.2);
+sun.position.set(-400, 600, 250);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -900, right: 900, top: 900, bottom: -900, near: 10, far: 2000 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const groundW = (E - W) * MX + 400, groundD = (N - S) * MZ + 400;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(groundW * 2, groundD * 2), new THREE.MeshLambertMaterial({ color: "#b9dba0" }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+
+// =====================================================================
+// 3) STREETS: each road becomes a flat gray ribbon, all merged into one
+// mesh so the computer draws them in a single step.
+// =====================================================================
+const ROAD_W = { primary: 14, secondary: 12, tertiary: 10, residential: 8, unclassified: 8, living_street: 6, service: 4.5,
+  pedestrian: 4, footway: 2, steps: 2 };
+function ribbon(pts, w, y) {
+  const pos = [], idx = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+    pos.push(p[0] - dz * w / 2, y, p[1] + dx * w / 2, p[0] + dz * w / 2, y, p[1] - dx * w / 2);
+    if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+// A round patch at each road end so corners look joined.
+function cap(p, w, y) { const g = new THREE.CircleGeometry(w / 2, 10); g.rotateX(-Math.PI / 2); g.translate(p[0], y, p[1]); return g; }
+const roadGeos = [], walkGeos = [];
+OSM.roads.forEach(r => {
+  const pts = r.p.map(toXZ), w = ROAD_W[r.k] || 6, walk = ["footway", "steps", "pedestrian"].includes(r.k);
+  if (pts.length < 2) return;
+  const y = walk ? 0.15 : 0.25;
+  (walk ? walkGeos : roadGeos).push(ribbon(pts, w, y), cap(pts[0], w, y), cap(pts[pts.length - 1], w, y));
+});
+const roads = new THREE.Mesh(mergeGeometries(roadGeos.map(g => { if (g.attributes.uv) g.deleteAttribute("uv"); return g.toNonIndexed(); })),
+  new THREE.MeshLambertMaterial({ color: "#7d838e", side: THREE.DoubleSide }));
+roads.receiveShadow = true; scene.add(roads);
+if (walkGeos.length) {
+  const walks = new THREE.Mesh(mergeGeometries(walkGeos.map(g => { if (g.attributes.uv) g.deleteAttribute("uv"); return g.toNonIndexed(); })),
+    new THREE.MeshLambertMaterial({ color: "#e8dcc2", side: THREE.DoubleSide }));
+  walks.receiveShadow = true; scene.add(walks);
+}
+
+// =====================================================================
+// 4) EXISTING BUILDINGS: OpenStreetMap outlines pushed up into blocks.
+// Height = floors × 3.2 m (or a typical 2-floor house if unknown).
+// =====================================================================
+const PASTELS = ["#f1ede4", "#e9e2d3", "#efe6dc", "#e2e7ea", "#ece4d6"];
+const bGeos = [];
+OSM.buildings.forEach((b, i) => {
+  const pts = b.p.map(toXZ);
+  if (pts.length < 4) return;
+  const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const h = b.l ? b.l * 3.2 : 6.5 + (i % 3) * 1.2;
+  const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2);
+  const c = new THREE.Color(PASTELS[i % PASTELS.length]);
+  const n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) col.set([c.r, c.g, c.b], k * 3);
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  if (g.attributes.uv) g.deleteAttribute("uv");
+  bGeos.push(g.index ? g.toNonIndexed() : g);
+});
+const existing = new THREE.Mesh(mergeGeometries(bGeos), new THREE.MeshLambertMaterial({ vertexColors: true }));
+existing.castShadow = true; existing.receiveShadow = true; scene.add(existing);
+
+// =====================================================================
+// 5) OPEN LOTS: flat colored shapes you can click.
+// All lots are merged into one mesh. Each vertex remembers which lot it
+// belongs to ("lotId"), so a click on any triangle tells us the lot.
+// =====================================================================
+const COLORS = { public: new THREE.Color("#6fb0ff"), private: new THREE.Color("#f4d76a"),
+  hover: new THREE.Color("#ffffff"), selected: new THREE.Color("#ff8a3d"), built: new THREE.Color("#c9d9bd") };
+const isPublic = l => ["city", "ura", "housing"].includes(l.own);
+const lots = [];
+const lotGeos = [];
+LOTS.forEach(l => {
+  const outer = l.g[0][0];
+  const cen = outer.reduce((a, p) => [a[0] + p[0] / outer.length, a[1] + p[1] / outer.length], [0, 0]);
+  if (!inArea(cen)) return;
+  const id = lots.length;
+  l.g.forEach(poly => {
+    const ring = poly[0].map(toXZ);
+    const shape = new THREE.Shape(ring.map(([x, z]) => new THREE.Vector2(x, -z)));
+    poly.slice(1).forEach(h => shape.holes.push(new THREE.Path(h.map(toXZ).map(([x, z]) => new THREE.Vector2(x, -z)))));
+    const g = new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI / 2); g.translate(0, 0.35, 0);
+    const n = g.attributes.position.count;
+    g.setAttribute("lotId", new THREE.Float32BufferAttribute(new Array(n).fill(id), 1));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(new Array(n * 3).fill(0), 3));
+    if (g.attributes.uv) g.deleteAttribute("uv");
+    lotGeos.push(g.toNonIndexed());
+  });
+  lots.push({ ...l, id, ring: l.g[0][0].map(toXZ) });
+});
+const lotMesh = new THREE.Mesh(mergeGeometries(lotGeos),
+  new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.78, depthWrite: false }));
+lotMesh.receiveShadow = true; scene.add(lotMesh);
+const lotIdAttr = lotMesh.geometry.attributes.lotId, lotColAttr = lotMesh.geometry.attributes.color;
+// Which vertex range belongs to each lot (so we can recolor one lot quickly).
+const ranges = {};
+for (let v = 0; v < lotIdAttr.count; v++) { const id = lotIdAttr.getX(v); (ranges[id] ||= [v, v])[1] = v; }
+
+// =====================================================================
+// 6) THE BUILDINGS YOU CAN PLACE
+// Each one is made from simple shapes (boxes, cones, cylinders) in a
+// 30 × 20 m footprint, then scaled to fit the lot it goes on.
+// =====================================================================
+const mat = c => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+function box(w, h, d, c, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y + h / 2, z); return m; }
+function cyl(r, h, c, x = 0, y = 0, z = 0, seg = 8) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat(c)); m.position.set(x, y + h / 2, z); return m; }
+function cone(r, h, c, x = 0, y = 0, z = 0, seg = 6) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat(c)); m.position.set(x, y + h / 2, z); return m; }
+function gable(w, h, d, c, y) { // a triangular roof running along x
+  const s = new THREE.Shape([new THREE.Vector2(-d / 2, 0), new THREE.Vector2(d / 2, 0), new THREE.Vector2(0, h)]);
+  const g = new THREE.ExtrudeGeometry(s, { depth: w, bevelEnabled: false }); g.rotateY(Math.PI / 2); g.translate(-w / 2, y, 0);
+  return new THREE.Mesh(g, mat(c));
+}
+function tree(x, z, s = 1) { const g = new THREE.Group(); g.add(cyl(0.5 * s, 2.4 * s, "#8a5a3c", x, 0, z, 6)); g.add(cone(2.6 * s, 6 * s, "#3fa34d", x, 2 * s, z, 7)); return g; }
+function pad(w, d, c) { return box(w, 0.4, d, c); }
+
+const TYPES = {
+  rec:      { name: "Rec center", color: "#2f7de1", cost: "$10M to $25M (with gym)", make() { const g = new THREE.Group();
+    g.add(box(28, 9, 18, "#2f7de1")); const r = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 28, 12, 1, false, 0, Math.PI), mat("#e9eef5"));
+    r.rotation.z = Math.PI / 2; r.position.y = 9; g.add(r); g.add(box(6, 4, 1, "#ffd84d", 0, 1.5, 9.2)); return g; } },
+  gym:      { name: "Gym", color: "#7b3fe4", cost: "$10M to $25M (with rec center)", make() { const g = new THREE.Group();
+    g.add(box(26, 8, 18, "#7b3fe4")); g.add(box(26.2, 1.4, 18.2, "#f5b301", 0, 6.2)); g.add(box(26, 0.6, 18, "#d9cff7", 0, 8)); return g; } },
+  park:     { name: "Park", color: "#46b25a", cost: "$200K to $1M", make() { const g = new THREE.Group();
+    g.add(pad(30, 20, "#62c46f")); g.add(box(30, 0.5, 3, "#e8dcc2", 0, 0, 0));
+    [[-10, -6], [-4, 6], [8, -6], [11, 6], [-12, 6], [3, -7]].forEach(([x, z], i) => g.add(tree(x, z, 0.8 + (i % 3) * 0.2)));
+    g.add(box(3, 0.8, 1, "#9a6b45", 2, 0.4, 2.5)); return g; } },
+  garden:   { name: "Community garden", color: "#8bbf3f", cost: "$5K to $20K", make() { const g = new THREE.Group();
+    g.add(pad(30, 20, "#c9a77a"));
+    for (let i = 0; i < 5; i++) { g.add(box(4, 0.8, 16, "#7a5233", -11 + i * 5.5, 0.4, 0));
+      for (let k = 0; k < 4; k++) g.add(cone(1, 1.6, "#5fb34a", -11 + i * 5.5, 1.2, -6 + k * 4, 5)); }
+    g.add(box(4, 3, 3, "#e05d4f", 12.5, 0.4, -7)); return g; } },
+  clinic:   { name: "Health clinic", color: "#e9edf2", cost: "$20K to $100K (pop-ups first)", make() { const g = new THREE.Group();
+    g.add(box(24, 7, 16, "#f4f6f8")); g.add(box(24.2, 1, 16.2, "#5aa9e6", 0, 7));
+    g.add(box(6, 1.2, 2, "#e5484d", 0, 8, 0)); g.add(box(2, 1.2, 6, "#e5484d", 0, 8, 0)); g.add(box(5, 3, 1, "#9ad1f5", 0, 0, 8.2)); return g; } },
+  jobs:     { name: "Job training center", color: "#f08c2e", cost: "$10K to $50K (in an existing building)", make() { const g = new THREE.Group();
+    g.add(box(26, 10, 16, "#f08c2e"));
+    for (let i = 0; i < 4; i++) { const r = gable(4, 3, 16, "#ffd2a3", 10); r.position.x = -9.75 + i * 6.5; r.rotation.y = 0; g.add(r); }
+    for (let i = 0; i < 5; i++) g.add(box(2.4, 2, 0.4, "#2b3a55", -10 + i * 5, 5, 8.1)); return g; } },
+  prek:     { name: "Pre-K", color: "#f7c948", cost: "$500K to $2M", make() { const g = new THREE.Group();
+    g.add(box(18, 5, 12, "#f7c948", -4)); const r = gable(18, 4.5, 13, "#e5484d", 5); r.position.x -= 4; g.add(r);
+    g.add(pad(9, 12, "#62c46f")); g.children[g.children.length - 1].position.x = 10.5;
+    g.add(box(1, 3, 1, "#2f7de1", 9, 0.4, -3)); g.add(box(1.2, 0.3, 5, "#2f7de1", 10.5, 1.8, -3)); return g; } },
+  grocery:  { name: "Grocery store", color: "#3fb26b", cost: "$5M to $15M (with a partner)", make() { const g = new THREE.Group();
+    g.add(box(28, 7, 14, "#3fb26b", 0, 0, -3)); for (let i = 0; i < 7; i++) g.add(box(4, 0.6, 3, i % 2 ? "#ffffff" : "#e5484d", -12 + i * 4, 4.5, 5.3));
+    g.add(pad(28, 6, "#5c6370")); g.children[g.children.length - 1].position.z = 7; return g; } },
+  shelter:  { name: "Shelter", color: "#22a6a1", cost: "$100K to $500K pilot", make() { const g = new THREE.Group();
+    g.add(box(22, 7, 12, "#22a6a1")); g.add(gable(22, 5, 13, "#f1ede4", 7));
+    for (let i = 0; i < 4; i++) g.add(box(2, 2, 0.4, "#fff1b8", -7.5 + i * 5, 2.8, 6.1)); return g; } },
+  recycle:  { name: "Recycling center", color: "#6b7b8c", cost: "$1M to $3M (full center)", make() { const g = new THREE.Group();
+    g.add(box(20, 8, 16, "#6b7b8c", -4)); g.add(box(20.2, 1, 16.2, "#3fb26b", -4, 8));
+    ["#3fb26b", "#2f7de1", "#f5b301"].forEach((c, i) => g.add(box(3, 3, 4, c, 9.5, 0, -5 + i * 5))); return g; } }
+};
+const FOOT = [30, 20];   // every model above fits in 30 m (x) by 20 m (z)
+
+// Fit a model to a lot: find the lot's longest edge (its direction) and
+// its size along and across that edge, then scale and turn the model.
+function fit(lot) {
+  const r = lot.ring; let best = 0, ang = 0;
+  for (let i = 0; i < r.length - 1; i++) { const dx = r[i + 1][0] - r[i][0], dz = r[i + 1][1] - r[i][1], L = Math.hypot(dx, dz); if (L > best) { best = L; ang = Math.atan2(dz, dx); } }
+  const c = Math.cos(-ang), s = Math.sin(-ang);
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  r.forEach(([x, z]) => { const u = x * c - z * s, v = x * s + z * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); z0 = Math.min(z0, v); z1 = Math.max(z1, v); });
+  const cu = (x0 + x1) / 2, cv = (z0 + z1) / 2;
+  const cx = cu * Math.cos(ang) - cv * Math.sin(ang), cz = cu * Math.sin(ang) + cv * Math.cos(ang);
+  const len = x1 - x0, wid = z1 - z0;
+  const scale = THREE.MathUtils.clamp(Math.min(len / FOOT[0], wid / FOOT[1]) * 0.9, 0.35, 2.2);
+  return { cx, cz, ang, scale };
+}
+
+// =====================================================================
+// 7) THE CITY YOU BUILD: { lotPin: { t: type, r: extra turns } }
+// Saved in this browser so it's still there next time.
+// =====================================================================
+let city = store.get("hd.city.v1", {});
+const placed = {};           // lot id -> 3D group
+const byPin = Object.fromEntries(lots.map(l => [l.pin, l]));
+function place(lot, type, turns = 0) {
+  unplace(lot);
+  const f = fit(lot), g = TYPES[type].make();
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  g.scale.setScalar(f.scale);
+  g.position.set(f.cx, 0.3, f.cz);
+  g.rotation.y = -f.ang + turns * Math.PI / 2;
+  g.userData = { lotId: lot.id, type, turns };
+  scene.add(g); placed[lot.id] = g;
+  city[lot.pin] = { t: type, r: turns }; store.set("hd.city.v1", city);
+  paintLot(lot.id); updateCount();
+}
+function unplace(lot) {
+  const g = placed[lot.id]; if (!g) return;
+  scene.remove(g); g.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+  delete placed[lot.id]; delete city[lot.pin]; store.set("hd.city.v1", city);
+  paintLot(lot.id); updateCount();
+}
+
+// =====================================================================
+// 8) CLICKING: a "ray" goes from the camera through the mouse into the
+// scene; the first thing it hits is what you clicked.
+// =====================================================================
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let selected = null, hovered = null;
+function lotAt(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const targets = [...Object.values(placed)];
+  if (lotMesh.visible) targets.push(lotMesh);
+  const hit = ray.intersectObjects(targets, true)[0];
+  if (!hit) return null;
+  if (hit.object === lotMesh) return lots[lotIdAttr.getX(hit.face.a)];
+  let o = hit.object; while (o && o.userData.lotId === undefined) o = o.parent;
+  return o ? lots[o.userData.lotId] : null;
+}
+function paintLot(id) {
+  const l = lots[id]; if (!l) return;
+  const c = id === selected?.id ? COLORS.selected : id === hovered?.id ? COLORS.hover : placed[id] ? COLORS.built : isPublic(l) ? COLORS.public : COLORS.private;
+  const [a, b] = ranges[id];
+  for (let v = a; v <= b; v++) lotColAttr.setXYZ(v, c.r, c.g, c.b);
+  lotColAttr.needsUpdate = true;
+}
+lots.forEach(l => paintLot(l.id));
+
+// A click is a press and release without much movement (otherwise it's a drag to spin the camera).
+let down = null;
+renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
+  select(lotAt(e));
+});
+renderer.domElement.addEventListener("pointermove", e => {
+  if (e.pointerType !== "mouse") return;
+  const l = lotAt(e); if (l?.id === hovered?.id) return;
+  const old = hovered; hovered = l; if (old) paintLot(old.id); if (l) paintLot(l.id);
+  renderer.domElement.style.cursor = l ? "pointer" : "";
+});
+
+const OWNER = { city: "City of Pittsburgh", ura: "URA", housing: "Housing Authority", person: "Private owner (a person)", company: "Private owner (a company or group)" };
+// Rough land each building usually needs (sq ft). Smaller lots still work in
+// the builder, but the card warns that it's tight and suggests combining lots.
+const NEEDS = { rec: 40000, gym: 15000, park: 5000, garden: 2000, clinic: 5000, jobs: 5000, prek: 6000, grocery: 20000, shelter: 8000, recycle: 15000 };
+function select(l) {
+  const old = selected; selected = l; if (old) paintLot(old.id); if (l) paintLot(l.id);
+  const info = document.getElementById("selInfo");
+  if (!l) { info.innerHTML = "Nothing selected yet. Click a colored lot on the map."; }
+  else {
+    const t = placed[l.id]?.userData.type, b = t ? TYPES[t] : null;
+    const tight = b && l.sqft && l.sqft < NEEDS[t]
+      ? `<br><span style="color:var(--gold)">Small for this: a ${b.name.toLowerCase()} usually needs about ${NEEDS[t].toLocaleString()} sq ft. Combine nearby lots or pick a bigger one.</span>` : "";
+    info.innerHTML = `<b>${l.addr || "Lot with no street number"}</b><br>${l.sqft ? l.sqft.toLocaleString() + " sq ft" : "Size not listed"} · ${OWNER[l.own]}<br>
+      ${b ? `Built: <b>${b.name}</b><br>Rough cost: ${b.cost}${tight}` : "Empty. Pick something to build below."}`;
+  }
+  document.querySelectorAll(".menu button").forEach(btn => { btn.disabled = !l; btn.classList.toggle("cur", !!(l && placed[l.id]?.userData.type === btn.dataset.t)); });
+  ["rotL", "rotR", "del"].forEach(id => document.getElementById(id).disabled = !(l && placed[l.id]));
+  setHint(l ? (placed[l.id] ? "Rotate or delete it, or pick a different building" : "Now pick a building from the menu") : "Click a highlighted lot to start building");
+}
+
+// =====================================================================
+// 9) THE PANEL
+// =====================================================================
+const menu = document.getElementById("menu");
+Object.entries(TYPES).forEach(([k, t]) => {
+  const b = document.createElement("button");
+  b.dataset.t = k; b.disabled = true;
+  b.innerHTML = `<i style="background:${t.color}"></i>${t.name}`;
+  b.onclick = () => { if (selected) { place(selected, k, 0); select(selected); } };
+  menu.appendChild(b);
+});
+const turn = d => { const g = selected && placed[selected.id]; if (!g) return; place(selected, g.userData.type, (g.userData.turns + d + 4) % 4); select(selected); };
+document.getElementById("rotL").onclick = () => turn(-1);
+document.getElementById("rotR").onclick = () => turn(1);
+document.getElementById("del").onclick = () => { if (selected) { unplace(selected); select(selected); } };
+document.getElementById("clearAll").onclick = () => {
+  if (!Object.keys(placed).length || !confirm("Remove every building you placed?")) return;
+  Object.keys(placed).forEach(id => unplace(lots[id])); select(null);
+};
+document.getElementById("showLots").onchange = e => { lotMesh.visible = e.target.checked; };
+document.getElementById("showExisting").onchange = e => { existing.visible = e.target.checked; };
+document.getElementById("resetView").onclick = () => { camera.position.copy(START.pos); controls.target.copy(START.target); };
+document.getElementById("topView").onclick = () => { const t = controls.target; camera.position.set(t.x, 700, t.z + 1); };
+const panel = document.getElementById("panel"), pt = document.getElementById("panelToggle");
+pt.onclick = () => { const min = panel.classList.toggle("min"); pt.textContent = min ? "Show" : "Hide"; pt.setAttribute("aria-expanded", !min); };
+function updateCount() { const n = Object.keys(placed).length; document.getElementById("placedCount").textContent = n ? `${n} building${n > 1 ? "s" : ""} placed.` : "No buildings placed yet."; }
+const hint = document.getElementById("hint");
+function setHint(t) { hint.textContent = t; }
+
+// Rebuild the saved city.
+Object.entries(city).forEach(([pin, v]) => { const l = byPin[pin]; if (l && TYPES[v.t]) place(l, v.t, v.r || 0); else delete city[pin]; });
+updateCount();
+
+// Keyboard: R / Shift+R rotate, Delete removes.
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea, select")) return;
+  if (e.key === "r" || e.key === "R") turn(e.shiftKey ? -1 : 1);
+  if (e.key === "Delete" || e.key === "Backspace") document.getElementById("del").click();
+  if (e.key === "Escape") select(null);
+});
+
+// =====================================================================
+// 10) DRAW EVERY FRAME
+// =====================================================================
+function resize() { const w = host.clientWidth, h = host.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(host); resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+document.getElementById("loading").remove();
+window.__builder = { lots, placed, TYPES, place, select, camera, controls };   // for testing
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 // To add or rename a page, change this list.
 (function () {
   const pages = [
-    ["index.html", "Home"], ["map.html", "Lot Map"], ["cycle.html", "Shelter Cycle"],
+    ["index.html", "Home"], ["map.html", "Lot Map"], ["builder.html", "City Builder"], ["cycle.html", "Shelter Cycle"],
     ["roadmap.html", "Roadmap"], ["costs.html", "Costs"], ["involved.html", "Get Involved"]
   ];
   const here = location.pathname.split("/").pop() || "index.html";
