@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roadmap · Hill District Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .progress { display: flex; align-items: center; gap: 14px; margin: 18px 0 8px; }
+  .bar { flex: 1; height: 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--green); transition: width .4s; }
+  .progress b { font-size: 14px; white-space: nowrap; }
+
+  .timeline { position: relative; margin-top: 26px; padding-left: 34px; }
+  .timeline::before { content: ""; position: absolute; left: 13px; top: 6px; bottom: 6px; width: 2px; background: var(--line-2); }
+  .stage { position: relative; margin-bottom: 18px; }
+  .stage .dotN { position: absolute; left: -34px; top: 18px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--panel); border: 2px solid var(--line-2); font-size: 13px; font-weight: 800; }
+  .stage.done .dotN { background: var(--green); border-color: var(--green); color: #06210f; }
+  .stage .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 10px; }
+  .stage .head h3 { font-size: 19px; margin: 0; }
+  .stage .when { color: var(--muted); font-size: 14px; }
+  .stage .cost { margin-left: auto; font-size: 13px; color: var(--gold); font-weight: 600; white-space: nowrap; }
+  .task { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 15px; cursor: pointer; }
+  .task input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--green); flex: none; cursor: pointer; }
+  .task.ticked span { color: var(--dim); text-decoration: line-through; }
+  .check { margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between;
+    background: #12151c; border: 1px dashed var(--line-2); border-radius: 10px; padding: 11px 14px; }
+  .check p { margin: 0; font-size: 14px; color: var(--muted); }
+  .check p b { color: var(--text); }
+  .stage.done .check { border-style: solid; border-color: var(--green); background: #0f1c14; }
+  .check button.isDone { background: var(--green); border-color: var(--green); color: #06210f; font-weight: 600; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  textarea { display: none; width: 100%; height: 90px; margin-top: 8px; font: 12px/1.4 monospace; background: #0f1115; color: #9fe3a6; border: 1px solid var(--line-2); border-radius: 8px; padding: 8px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">Stage 0 to Stage 5</p>
+  <h1>The roadmap</h1>
+  <p class="lead">From the easiest wins to the biggest builds. Each stage ends with a checkpoint. Tick tasks as they get done, and mark the checkpoint when the whole stage is finished. Timelines are rough guesses until the church knows its budget and partners.</p>
+
+  <div class="progress"><div class="bar"><i id="barFill"></i></div><b id="barText"></b></div>
+  <div class="tools noprint">
+    <button id="exportBtn">Copy progress</button>
+    <button id="importBtn">Paste progress</button>
+    <button onclick="print()">Print</button>
+  </div>
+  <textarea id="code" aria-label="Progress code"></textarea>
+  <p class="small muted">Progress is saved in this browser. To share it, use "Copy progress" and send the code; the other person uses "Paste progress".</p>
+
+  <div class="timeline" id="timeline"></div>
+
+  <h2>Open questions for the church</h2>
+  <div class="grid">
+    <div class="card"><h3>Budget</h3><p class="muted small" style="margin:0">What budget does the church have to start?</p></div>
+    <div class="card"><h3>Land</h3><p class="muted small" style="margin:0">Which lots can the church actually use? Mark them on the <a href="map.html">Lot Map</a>.</p></div>
+    <div class="card"><h3>Partners</h3><p class="muted small" style="margin:0">Which partners does the church already know?</p></div>
+  </div>
+</main>
+
+<script src="nav.js"></script>
+<script src="data/plan.js"></script>
+<script>
+// Progress is one object: { "t0-1": true, "c0": true, ... }
+//   t<stage>-<task> = a task is ticked, c<stage> = the stage's checkpoint is done.
+let prog = store.get("hd.roadmap.v1", {});
+const save = () => { store.set("hd.roadmap.v1", prog); render(); };
+
+function render() {
+  const tl = document.getElementById("timeline");
+  tl.innerHTML = "";
+  STAGES.forEach(st => {
+    const [lo, hi] = stageCost(st.n);
+    const done = !!prog["c" + st.n];
+    const div = document.createElement("section");
+    div.className = "stage card" + (done ? " done" : "");
+    div.innerHTML = `<div class="dotN">${done ? "✓" : st.n}</div>
+      <div class="head"><h3>Stage ${st.n}: ${st.name}</h3><span class="when">${st.when}</span>
+        <span class="cost">${lo === 0 && hi <= 2000 ? "up to " + money(hi) : money(lo) + " to " + money(hi)} one-time</span></div>
+      ${st.tasks.map((t, i) => `<label class="task${prog[`t${st.n}-${i}`] ? " ticked" : ""}">
+        <input type="checkbox" data-k="t${st.n}-${i}"${prog[`t${st.n}-${i}`] ? " checked" : ""}><span>${t}</span></label>`).join("")}
+      <div class="check"><p><b>Checkpoint:</b> ${st.checkpoint}</p>
+        <button data-c="${st.n}" class="${done ? "isDone" : ""}">${done ? "Checkpoint reached" : "Mark checkpoint done"}</button></div>`;
+    tl.appendChild(div);
+  });
+  tl.querySelectorAll("[data-k]").forEach(b => b.onchange = () => { prog[b.dataset.k] = b.checked || undefined; save(); });
+  tl.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { const k = "c" + b.dataset.c; prog[k] = !prog[k] || undefined; save(); });
+
+  const total = STAGES.length, reached = STAGES.filter(s => prog["c" + s.n]).length;
+  document.getElementById("barFill").style.width = (reached / total * 100) + "%";
+  document.getElementById("barText").textContent = `${reached} of ${total} checkpoints reached`;
+}
+render();
+
+const code = document.getElementById("code");
+document.getElementById("exportBtn").onclick = () => {
+  code.style.display = "block"; code.readOnly = true; code.value = JSON.stringify(prog); code.select();
+  navigator.clipboard?.writeText(code.value);
+};
+document.getElementById("importBtn").onclick = () => {
+  if (code.style.display !== "block" || code.readOnly) {
+    code.style.display = "block"; code.readOnly = false; code.value = "";
+    code.placeholder = "Paste the progress code here, then click Paste progress again."; code.focus(); return;
+  }
+  try { const p = JSON.parse(code.value); if (typeof p !== "object" || Array.isArray(p)) throw 0;
+    prog = p; save(); code.value = ""; code.style.display = "none"; }
+  catch { code.value = ""; code.placeholder = "That code didn't work. Copy it again and paste the whole thing."; }
+};
+</script>
+</body>
+</html>

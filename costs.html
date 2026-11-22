@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Costs · Hill District Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .totals { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 22px 0 26px; }
+  .totals b { display: block; font-size: 28px; letter-spacing: -.5px; margin: 4px 0; }
+  .totals .card.start { border-color: var(--gold); }
+  .totals .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 600; }
+  tr.stageRow td { background: #12151c; font-weight: 600; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">Rough estimates</p>
+  <h1>What it could cost</h1>
+  <p class="lead">Ballpark ranges, not quotes. Before showing them to anyone, check them with local builders, the URA, and similar Pittsburgh projects.</p>
+
+  <div class="totals">
+    <div class="card start"><div class="label">Where we start: Stages 0 to 2</div><b id="startTotal"></b><span class="muted small">one-time. This is the part the church can begin now.</span></div>
+    <div class="card"><div class="label">Everything, Stages 0 to 5</div><b id="allTotal"></b><span class="muted small">one-time, spread over 5 or more years</span></div>
+    <div class="card"><div class="label">Who pays for the big items</div><b style="font-size:20px">Mostly partners</b><span class="muted small">grants, the city, the URA, and foundations, not the church alone</span></div>
+  </div>
+
+  <div class="tableWrap">
+    <table>
+      <thead><tr><th>Stage</th><th>Item</th><th>One-time cost</th><th>Yearly cost</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="small muted" style="margin-top:12px">Numbers come from one place (<code>data/plan.js</code>), so if a cost changes there, every page updates.</p>
+</main>
+
+<script src="nav.js"></script>
+<script src="data/plan.js"></script>
+<script>
+  const sum = (stages, i) => COSTS.filter(c => stages.includes(c.stage)).reduce((s, c) => s + c.once[i], 0);
+  document.getElementById("startTotal").textContent = money(sum([0, 1, 2], 0)) + " to " + money(sum([0, 1, 2], 1));
+  document.getElementById("allTotal").textContent = money(sum([0, 1, 2, 3, 4, 5], 0)) + " to " + money(sum([0, 1, 2, 3, 4, 5], 1));
+
+  const tbody = document.getElementById("rows");
+  STAGES.forEach(st => {
+    tbody.insertAdjacentHTML("beforeend", `<tr class="stageRow"><td colspan="4">Stage ${st.n}: ${st.name} · ${st.when}</td></tr>`);
+    COSTS.filter(c => c.stage === st.n).forEach(c => tbody.insertAdjacentHTML("beforeend",
+      `<tr><td><span class="stageTag">${c.stage}</span></td><td>${c.item}</td>
+       <td class="num">${range(c.once, c.under)}</td><td class="num">${range(c.yearly, c.under)}</td></tr>`));
+  });
+</script>
+</body>
+</html>

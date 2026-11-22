@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shelter Cycle · Hill District Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .cycleWrap { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: center; margin-top: 18px; }
+  svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .step { cursor: pointer; }
+  .step circle.node { fill: var(--panel); stroke: var(--teal); stroke-width: 2.5; transition: fill .2s, stroke .2s; }
+  .step text { fill: var(--text); font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+  .step text.n { fill: var(--teal); font-size: 13px; font-weight: 800; }
+  .step.on circle.node, .step:hover circle.node, .step:focus circle.node { fill: var(--teal); stroke: #7ee0db; }
+  .step.on text, .step:hover text, .step:focus text { fill: #08201f; }
+  .step:focus { outline: none; }
+  .ring { fill: none; stroke: var(--line-2); stroke-width: 2; }
+  .arc { fill: none; stroke: var(--teal); stroke-width: 3; opacity: .55; }
+  .money line { stroke: var(--gold); stroke-width: 2; stroke-dasharray: 5 5; }
+  .money rect { fill: #1d1a10; stroke: var(--gold); stroke-width: 1.5; }
+  .money text { fill: var(--gold); font-family: Inter, sans-serif; font-size: 13px; font-weight: 600; text-anchor: middle; }
+  .money g { cursor: pointer; }
+  .center text { font-family: Inter, sans-serif; text-anchor: middle; }
+  #detail { min-height: 170px; }
+  #detail .n { font-size: 12px; color: var(--teal); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+  #detail h3 { font-size: 22px; margin: 4px 0 8px; }
+  #detail p { color: var(--muted); margin: 0; font-size: 16px; }
+  #detail.gold .n { color: var(--gold); }
+  .btnRow { display: flex; gap: 8px; margin-top: 14px; }
+  ul.clean { padding-left: 18px; margin: 8px 0 0; color: var(--muted); }
+  ul.clean li { margin-bottom: 8px; }
+  @media (max-width: 820px) { .cycleWrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">Self-funding plan</p>
+  <h1>The shelter and recycling cycle</h1>
+  <p class="lead">A shelter next to a recycling center. Residents collect and sort recyclables, earn real wages, and save toward their own place. What the center earns goes back into the shelter. Tap a step to read it.</p>
+
+  <div class="cycleWrap">
+    <svg id="cycle" viewBox="-330 -310 660 620" role="img" aria-label="Circle diagram of the shelter and recycling cycle"></svg>
+    <div>
+      <div class="card" id="detail" aria-live="polite"></div>
+      <div class="btnRow"><button id="prev">Back</button><button id="next" class="primary">Next step</button></div>
+    </div>
+  </div>
+
+  <h2>Keep in mind</h2>
+  <div class="grid">
+    <div class="card"><h3>Why it needs outside money</h3><ul class="clean" id="notes"></ul></div>
+    <div class="card"><h3>The stronger version</h3><ul class="clean">
+      <li>Beds stay free or very cheap.</li>
+      <li>The recycling center runs as a real business (a social enterprise).</li>
+      <li>Residents earn real wages, learn job skills, and save toward their own housing.</li></ul></div>
+    <div class="card"><h3>How we start</h3><ul class="clean" id="steps"></ul>
+      <p class="small muted" style="margin:10px 0 0"><b style="color:var(--text)">Checkpoint:</b> the pilot covers its own costs for 3 months.</p></div>
+  </div>
+</main>
+
+<script src="nav.js"></script>
+<script src="data/plan.js"></script>
+<script>
+// Draw the circle: each step sits at an equal angle around a ring.
+// angle = 360° / number of steps, starting at the top (-90°).
+const svg = document.getElementById("cycle");
+const NS = "http://www.w3.org/2000/svg";
+const R = 210, N = CYCLE.length;
+const pos = i => { const a = (-90 + i * 360 / N) * Math.PI / 180; return [R * Math.cos(a), R * Math.sin(a)]; };
+const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+el("defs", {}).innerHTML = `<marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#22a6a1"/></marker>
+  <marker id="goldArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f5b301"/></marker>`;
+el("circle", { class: "ring", r: R });
+
+// Arrows from each step to the next, drawn as short arcs along the ring.
+const NODE = 46;  // node radius
+for (let i = 0; i < N; i++) {
+  const gap = (NODE + 10) / R;                          // leave room around each node (in radians)
+  const a1 = (-90 + i * 360 / N) * Math.PI / 180 + gap;
+  const a2 = (-90 + (i + 1) * 360 / N) * Math.PI / 180 - gap;
+  el("path", { class: "arc", "marker-end": "url(#arrow)",
+    d: `M ${R * Math.cos(a1)} ${R * Math.sin(a1)} A ${R} ${R} 0 0 1 ${R * Math.cos(a2)} ${R * Math.sin(a2)}` });
+}
+
+// Money coming in from outside: four boxes in the corners, dashed lines into the middle.
+const corners = [[-255, -255], [255, -255], [-255, 255], [255, 255]];
+const moneyG = el("g", { class: "money" });
+MONEY_IN.forEach((m, i) => {
+  const [x, y] = corners[i];
+  el("line", { x1: x * 0.9, y1: y * 0.9, x2: x * 0.36, y2: y * 0.36, "marker-end": "url(#goldArrow)" }, moneyG);
+  const g = el("g", { tabindex: 0, role: "button", "aria-label": m.t }, moneyG);
+  el("rect", { x: x - 66, y: y - 18, width: 132, height: 36, rx: 9 }, g);
+  el("text", { x, y: y + 5 }, g).textContent = m.t;
+  const show = () => showMoney(i); g.addEventListener("click", show); g.addEventListener("mouseenter", show); g.addEventListener("focus", show);
+});
+
+// Center label
+const c = el("g", { class: "center" });
+el("text", { y: -8, fill: "#e9ecf1", "font-size": 20, "font-weight": 800 }, c).textContent = "Shelter +";
+el("text", { y: 18, fill: "#e9ecf1", "font-size": 20, "font-weight": 800 }, c).textContent = "Recycling";
+el("text", { y: 42, fill: "#9aa3b2", "font-size": 13 }, c).textContent = "money comes in from outside";
+
+// The steps
+const nodes = CYCLE.map((s, i) => {
+  const [x, y] = pos(i);
+  const g = el("g", { class: "step", tabindex: 0, role: "button", "aria-label": `Step ${i + 1}: ${s.t}` });
+  el("circle", { class: "node", cx: x, cy: y, r: NODE }, g);
+  el("text", { class: "n", x, y: y - 10 }, g).textContent = i + 1;
+  el("text", { x, y: y + 12 }, g).textContent = s.t;
+  const show = () => showStep(i);
+  g.addEventListener("click", show); g.addEventListener("mouseenter", show); g.addEventListener("focus", show);
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); show(); } });
+  return g;
+});
+
+const detail = document.getElementById("detail");
+let cur = 0;
+function showStep(i) {
+  cur = (i + N) % N;
+  nodes.forEach((g, j) => g.classList.toggle("on", j === cur));
+  detail.className = "card";
+  detail.innerHTML = `<div class="n">Step ${cur + 1} of ${N}</div><h3>${CYCLE[cur].t}</h3><p>${CYCLE[cur].d}</p>`;
+}
+function showMoney(i) {
+  nodes.forEach(g => g.classList.remove("on"));
+  detail.className = "card gold";
+  detail.innerHTML = `<div class="n">Money coming in</div><h3>${MONEY_IN[i].t}</h3><p>${MONEY_IN[i].d}</p>`;
+}
+document.getElementById("next").onclick = () => showStep(cur + 1);
+document.getElementById("prev").onclick = () => showStep(cur - 1);
+showStep(0);
+
+document.getElementById("notes").innerHTML = CYCLE_NOTES.map(n => `<li>${n}</li>`).join("");
+document.getElementById("steps").innerHTML = CYCLE_STEPS.map(n => `<li>${n}</li>`).join("");
+</script>
+</body>
+</html>

@@ -1,10 +1,39 @@
-# Hill District Community Plan
+# Hill District Vision
 
-An interactive satellite map of Pittsburgh's Hill District that shows where new community buildings could go, like a rec center, grocery store, health clinic, and park. Each spot was picked to fill a real gap in the neighborhood.
+A church-led, step-by-step vision for Pittsburgh's Hill District, around Kirkpatrick St. It started as an interactive map of where new community buildings could go, and now has the whole plan: real lots, a self-funding shelter, a roadmap with checkpoints, costs, and ways to help.
 
 **By Rechab**
 
+## Pages
+
+| Page | What it shows |
+|---|---|
+| `index.html` | Home: the vision in one sentence and links to every section |
+| `map.html` | The Lot Map: the proposed sites, plus every vacant or publicly owned lot from county records. Click a lot to see its size and owner type, and mark it Possible, Chosen, or Not available |
+| `cycle.html` | The shelter and recycling cycle, as a circle you can click through |
+| `roadmap.html` | Stage 0 to Stage 5, with tasks and checkpoints to tick off |
+| `costs.html` | Rough cost ranges for every project |
+| `involved.html` | Volunteer, give, partner, and a printable neighbor survey |
+
+## Where the content lives
+
+- `data/plan.js`: the roadmap stages, costs, cycle steps, and building list. Change a number or a sentence here and every page updates.
+- `data/lots.js`: the open lots, built once from Allegheny County parcel shapes and WPRDC property assessments. Owners are shown by type only (City, URA, Housing Authority, private person, private company), never by name.
+- `nav.js`: the top menu and footer for every page.
+- `style.css`: colors and layout shared by every page.
+
+## Saving marks and progress
+
+Lot marks and roadmap ticks are saved in the browser you use. To share them with someone else, use **Copy our marks** (Lot Map) or **Copy progress** (Roadmap) and send them the code. They paste it with **Paste marks** or **Paste progress**.
+
+## Still to fill in
+
+- The church contact, giving link, and partner contact on the Get Involved page
+- A Google Form link for the online neighbor survey
+
 ---
+
+## About the original map
 
 ## The idea
 
@@ -45,13 +74,13 @@ For every site I asked four questions:
 
 | File | What it does |
 |---|---|
-| `index.html` | The page content, the site data, and the map code |
-| `style.css` | How the page looks: colors, layout, pin styles |
+| `map.html` | The map page, the site data, and the map code |
+| `style.css` | How every page looks: colors and layout |
 | `README.md` | This explanation |
 
 ## How to add or change a site
 
-Open `index.html` and find the `proposed` list near the top of the script. Each site is one block like this:
+Open `map.html` and find the `proposed` list near the top of the script. Each site is one block like this:
 
 ```js
 {

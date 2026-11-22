@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Involved · Hill District Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .ways .card h3 { font-size: 19px; }
+  .ways .card p { color: var(--muted); font-size: 15px; margin: 0 0 12px; }
+  .survey { margin-top: 10px; }
+  .survey ol { padding-left: 20px; margin: 10px 0 0; }
+  .survey li { margin-bottom: 16px; }
+  .survey .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 4px 16px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .survey .lines { border-bottom: 1px solid var(--line-2); height: 28px; }
+  .surveyHead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  @media print { .survey .lines { border-color: #999; } .survey .opts { color: #222; } h1, .lead, .ways, .noprintBlock { display: none; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">Get involved</p>
+  <h1>Help build it</h1>
+  <p class="lead">Every stage needs people: neighbors to tell us what they need, volunteers to plant and clean up, and partners to help pay for the big builds.</p>
+
+  <div class="grid ways" style="margin-top:22px">
+    <div class="card"><h3>Volunteer</h3><p>Garden days, cleanup days, and helping run the neighbor survey.</p>
+      <div class="placeholder">Church contact: add a phone number or email here.</div></div>
+    <div class="card"><h3>Give</h3><p>Start-up costs for Stages 0 to 2 are the first goal. See the <a href="costs.html">Costs</a> page.</p>
+      <div class="placeholder">Donation link: add the church's giving page here.</div></div>
+    <div class="card"><h3>Partner with us</h3><p>Clinics, early learning programs, recyclers, builders, and funders.</p>
+      <div class="placeholder">Partner contact: add who to reach here.</div></div>
+  </div>
+
+  <h2 id="survey">Neighbor survey</h2>
+  <div class="card survey">
+    <div class="surveyHead noprintBlock">
+      <p class="muted" style="margin:0">Stage 1 starts with asking residents what they need most. Print this page to hand out paper copies.</p>
+      <button class="primary noprint" onclick="print()">Print the survey</button>
+    </div>
+    <div class="placeholder noprintBlock" style="margin-top:12px">Online version: add a Google Form link here so people can answer on their phones.</div>
+    <h3 style="margin-top:18px">Hill District Neighbor Survey</h3>
+    <ol>
+      <li>Which of these does your family need most? Circle up to 3.
+        <div class="opts" id="opts"></div></li>
+      <li>Is there anything else the neighborhood is missing?<div class="lines"></div><div class="lines"></div></li>
+      <li>How do you usually get around? (walk, bus, car, other)<div class="lines"></div></li>
+      <li>Would you help with a community garden or a cleanup day? (yes / maybe / no)<div class="lines"></div></li>
+      <li>Your street or block (optional, so we know which lots matter to you)<div class="lines"></div></li>
+    </ol>
+  </div>
+</main>
+
+<script src="nav.js"></script>
+<script src="data/plan.js"></script>
+<script>
+  // The survey choices are the same buildings the lot map uses, minus the catch-alls.
+  document.getElementById("opts").innerHTML = BUILDINGS.filter(b => !["Parking", "Other"].includes(b))
+    .map(b => `<span>○ ${b}</span>`).join("") + `<span>○ Something else</span>`;
+</script>
+</body>
+</html>
