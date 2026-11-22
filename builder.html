@@ -40,6 +40,9 @@
   #where { position: absolute; top: 14px; right: 14px; z-index: 4; background: rgba(21,24,32,.92); color: var(--text); border: 1px solid var(--line);
     border-radius: 12px; padding: 9px 14px; font-size: 15px; font-weight: 700; max-width: calc(100% - 360px); }
   #where span { color: var(--gold); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-right: 6px; font-weight: 600; }
+  #key { position: absolute; right: 14px; bottom: 14px; z-index: 4; display: grid; gap: 5px; background: rgba(21,24,32,.92); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 13px; font-size: 12px; color: #c5ccd8; }
+  #key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 7px; vertical-align: -2px; }
   #crosshair { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; z-index: 3; pointer-events: none;
     border: 2px solid rgba(255,255,255,.85); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
   #loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: var(--bg); color: var(--muted); font-size: 15px; }
@@ -53,6 +56,7 @@
     #panel h1 { font-size: 16px; margin: 0; flex: 1; }
     #panelToggle { display: block; padding: 6px 10px; font-size: 13px; }
     #hint { bottom: auto; top: 58px; white-space: normal; text-align: center; width: max-content; max-width: 90%; font-size: 12px; }
+    #key { display: none; }
     #where { top: 10px; left: 10px; right: 10px; max-width: none; text-align: center; font-size: 14px; padding: 8px 12px; }
   }
 </style>
@@ -70,6 +74,12 @@
   <div id="loading">Building the neighborhood…</div>
   <div id="hint">Click a highlighted lot to start building</div>
   <div id="where" aria-live="polite">Hill District</div>
+  <div id="key" aria-label="Color key">
+    <span><i style="background:#6fb0ff"></i>Public land (City, URA, Housing Authority)</span>
+    <span><i style="background:#f4d76a"></i>Private vacant land</span>
+    <span><i style="background:#ff8a3d"></i>Selected lot</span>
+    <span><i style="background:#c9d9bd"></i>Built on</span>
+  </div>
   <div id="crosshair" aria-hidden="true"></div>
 
   <aside id="panel">
@@ -98,6 +108,7 @@
         <label><input type="checkbox" id="showExisting" checked> Show existing buildings</label>
         <label><input type="checkbox" id="showNames" checked> Show street names</label>
         <label><input type="checkbox" id="showTags" checked> Show labels on new buildings</label>
+        <label><input type="checkbox" id="showLotLabels" checked> Label open lots near you</label>
       </div>
       <div class="row" style="margin-top:6px">
         <button id="topView">Top view</button>
@@ -563,6 +574,7 @@ document.getElementById("clearAll").onclick = () => {
 document.getElementById("showLots").onchange = e => { lotMesh.visible = lotLines.visible = e.target.checked; };
 document.getElementById("showNames").onchange = e => { labelGroup.visible = e.target.checked; };
 document.getElementById("showTags").onchange = e => { tags.visible = e.target.checked; };
+document.getElementById("showLotLabels").onchange = e => { lotLabels.visible = e.target.checked; lastLL = ""; };
 document.getElementById("showExisting").onchange = e => { existing.visible = e.target.checked; };
 document.getElementById("resetView").onclick = () => { camera.position.copy(START.pos); controls.target.copy(START.target); };
 document.getElementById("topView").onclick = () => { const t = controls.target; camera.position.set(t.x, 700, t.z + 1); };
@@ -589,6 +601,65 @@ addEventListener("keydown", e => {
 // =====================================================================
 function resize() { const w = host.clientWidth, h = host.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(host); resize();
+// =====================================================================
+// 11) LABELS ON THE FREE LOTS
+// The bigger open lots near the middle of the view get a label: who owns
+// the land, how big it is, and which buildings could fit (from NEEDS).
+// Only ~16 at a time, and only when zoomed in, so the map stays readable.
+// =====================================================================
+const LAND = { city: "City land", ura: "URA land", housing: "Housing Authority land", person: "Private, vacant", company: "Private, vacant" };
+const FIT_ORDER = ["rec", "grocery", "gym", "recycle", "shelter", "prek", "clinic", "jobs", "park", "garden"];
+lots.forEach(l => {
+  l.cx = l.ring.reduce((s, p) => s + p[0], 0) / l.ring.length;
+  l.cz = l.ring.reduce((s, p) => s + p[1], 0) / l.ring.length;
+});
+function fitsText(sqft) {
+  const fits = FIT_ORDER.filter(t => sqft >= NEEDS[t]).slice(0, 3).map(t => TYPES[t].name.replace("Community garden", "garden").replace("Job training center", "job training").toLowerCase().replace("pre-k", "Pre-K"));
+  return fits.length ? "Fits: " + fits.join(", ") : "Small lot";
+}
+const lotTexCache = {};
+function lotLabelTexture(l) {
+  if (lotTexCache[l.pin]) return lotTexCache[l.pin];
+  const pub = isPublic(l), acres = l.sqft / 43560;
+  const line1 = LAND[l.own], line2 = (acres >= 0.1 ? acres.toFixed(2) + " acres" : l.sqft.toLocaleString() + " sq ft") + " · " + fitsText(l.sqft);
+  const c = document.createElement("canvas"), ctx = c.getContext("2d");
+  ctx.font = "700 34px Inter, Arial, sans-serif"; const w1 = ctx.measureText(line1).width;
+  ctx.font = "500 28px Inter, Arial, sans-serif"; const w2 = ctx.measureText(line2).width;
+  const w = Math.ceil(Math.max(w1, w2)) + 44, h = 100; c.width = w; c.height = h;
+  ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.beginPath(); ctx.roundRect(2, 2, w - 4, h - 4, 18); ctx.fill();
+  ctx.fillStyle = pub ? "#2f7de1" : "#d4a514"; ctx.fillRect(2, 2, 10, h - 4);
+  ctx.textBaseline = "middle"; ctx.fillStyle = "#151820"; ctx.font = "700 34px Inter, Arial, sans-serif"; ctx.fillText(line1, 26, 34);
+  ctx.fillStyle = "#4a5263"; ctx.font = "500 28px Inter, Arial, sans-serif"; ctx.fillText(line2, 26, 72);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return (lotTexCache[l.pin] = { t, ar: w / h });
+}
+const lotLabels = new THREE.Group(); scene.add(lotLabels);
+const POOL = Array.from({ length: 16 }, () => {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  sp.renderOrder = 4; sp.visible = false; sp.center.set(0.5, 0); lotLabels.add(sp); return sp;
+});
+let lastLL = "", lastLLCheck = 0;
+function updateLotLabels(now) {
+  if (now - lastLLCheck < 300) return; lastLLCheck = now;
+  const t = controls.target, dist = camera.position.distanceTo(t);
+  const key = Math.round(t.x / 10) + "," + Math.round(t.z / 10) + "," + Math.round(dist / 40) + "," + Object.keys(placed).length + "," + (selected?.id ?? "");
+  if (key === lastLL) return; lastLL = key;
+  if (!lotLabels.visible || !lotMesh.visible || dist > 560) { POOL.forEach(p => p.visible = false); return; }
+  const radius = Math.min(320, dist * 0.75), minSize = dist > 380 ? 8000 : 3000;
+  const s = THREE.MathUtils.clamp(dist / 190, 0.9, 2.6);
+  // Biggest lots first; skip any lot whose label would sit on top of one already chosen.
+  const gap = 34 * s, pick = [];
+  lots.filter(l => !placed[l.id] && l.id !== selected?.id && l.sqft >= minSize && Math.hypot(l.cx - t.x, l.cz - t.z) < radius)
+    .sort((a, b) => b.sqft - a.sqft)
+    .forEach(l => { if (pick.length < POOL.length && pick.every(p => Math.hypot(p.cx - l.cx, (p.cz - l.cz) * 2.2) > gap)) pick.push(l); });
+  POOL.forEach((sp, i) => {
+    const l = pick[i]; if (!l) { sp.visible = false; return; }
+    const { t: tex, ar } = lotLabelTexture(l);
+    sp.material.map = tex; sp.material.needsUpdate = true;
+    sp.scale.set(8.5 * ar * s, 8.5 * s, 1); sp.position.set(l.cx, 1.5, l.cz); sp.visible = true;
+  });
+}
+
 // "Near…" label: when the view moves, find the closest streets to its center.
 const where = document.getElementById("where");
 let lastT = "", lastCheck = 0;
@@ -609,9 +680,9 @@ function scaleLabels() {
   const kt = Math.min(k, 2.2);
   tags.children.forEach(t => t.scale.set(t.userData.base[0] * kt, t.userData.base[1] * kt, 1));
 }
-renderer.setAnimationLoop(now => { controls.update(); updateWhere(now); scaleLabels(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(now => { controls.update(); updateWhere(now); updateLotLabels(now); scaleLabels(); renderer.render(scene, camera); });
 document.getElementById("loading").remove();
-window.__builder = { lots, placed, TYPES, place, select, camera, controls, nearestStreets, namedWays: () => namedWays.length, labels: () => labelGroup.children.length };   // for testing
+window.__builder = { lots, placed, TYPES, place, select, camera, controls, nearestStreets, namedWays: () => namedWays.length, labels: () => labelGroup.children.length, pool: () => POOL.filter(p => p.visible).length, lotLabels };   // for testing
 </script>
 </body>
 </html>
